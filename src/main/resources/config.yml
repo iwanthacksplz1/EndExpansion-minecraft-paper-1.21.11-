@@ -1,5 +1,4 @@
-# Structures are generated in newly generated End chunks.
-# Chances are checked once per chunk. 0.04 = about 4% of eligible chunks.
+# Structures generate only in newly generated End chunks.
 structures:
   enabled: true
   ruins:
@@ -17,11 +16,14 @@ structures:
   end-temples:
     enabled: true
     chance: 0.008
+  mega-ruins:
+    enabled: true
+    chance: 0.009
 
 loot:
-  # Vanilla loot tables keep rewards consistent with Minecraft.
   ruins: minecraft:chests/end_city_treasure
   void-towers: minecraft:chests/end_city_treasure
   dungeons: minecraft:chests/simple_dungeon
   broken-bridges: minecraft:chests/end_city_treasure
   end-temples: minecraft:chests/end_city_treasure
+  mega-ruins: minecraft:chests/end_city_treasure
