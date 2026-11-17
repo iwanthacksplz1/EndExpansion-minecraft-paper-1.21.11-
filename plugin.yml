@@ -1,0 +1,5 @@
+name: EndExpansion
+version: 1.0.0
+main: com.example.endexpansion.EndExpansionPlugin
+api-version: '1.21'
+description: Adds naturally generating vanilla-style structures to the End.
