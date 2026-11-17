@@ -1,6 +1,9 @@
-# Structures generate only in newly generated End chunks.
+# Structures generate only in newly generated End chunks, at least 1,000 blocks from (0, 0).
 structures:
   enabled: true
+  end-villages:
+    enabled: true
+    chance: 0.03
   ruins:
     enabled: true
     chance: 0.035
@@ -15,12 +18,13 @@ structures:
     chance: 0.018
   end-temples:
     enabled: true
-    chance: 0.008
+    chance: 0.01
   mega-ruins:
     enabled: true
-    chance: 0.009
+    chance: 0.002
 
 loot:
+  end-villages: minecraft:chests/abandoned_mineshaft
   ruins: minecraft:chests/end_city_treasure
   void-towers: minecraft:chests/end_city_treasure
   dungeons: minecraft:chests/simple_dungeon
