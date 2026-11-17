@@ -7,6 +7,11 @@ import org.bukkit.World;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Chest;
 import org.bukkit.block.CreatureSpawner;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.EntityType;
 import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.LimitedRegion;
@@ -15,11 +20,29 @@ import org.bukkit.loot.LootTable;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Random;
+import java.io.File;
+import java.io.IOException;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-public final class EndExpansionPlugin extends JavaPlugin {
+public final class EndExpansionPlugin extends JavaPlugin implements CommandExecutor {
+    private final Map<String, Set<String>> generatedStructures = new ConcurrentHashMap<>();
+    private File locationsFile;
+    private YamlConfiguration locationsData;
+
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        locationsFile = new File(getDataFolder(), "generated-structures.yml");
+        locationsData = YamlConfiguration.loadConfiguration(locationsFile);
+        loadGeneratedStructures();
+        if (getCommand("endexpansion") != null) {
+            getCommand("endexpansion").setExecutor(this);
+        } else {
+            getLogger().severe("Command 'endexpansion' is missing from plugin.yml!");
+        }
         getLogger().info("EndExpansion enabled. Structures generate in new End chunks.");
         for (World world : Bukkit.getWorlds()) addPopulator(world);
         Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
@@ -28,6 +51,102 @@ public final class EndExpansionPlugin extends JavaPlugin {
                 addPopulator(event.getWorld());
             }
         }, this);
+    }
+
+    @Override
+    public void onDisable() {
+        saveGeneratedStructures();
+    }
+
+    private void loadGeneratedStructures() {
+        for (String type : locationsData.getKeys(false)) {
+            Set<String> entries = ConcurrentHashMap.newKeySet();
+            entries.addAll(locationsData.getStringList(type));
+            generatedStructures.put(type, entries);
+        }
+    }
+
+    private synchronized void saveGeneratedStructures() {
+        if (locationsData == null || locationsFile == null) return;
+        for (String type : generatedStructures.keySet()) {
+            locationsData.set(type, generatedStructures.get(type).stream().sorted().toList());
+        }
+        try {
+            locationsData.save(locationsFile);
+        } catch (IOException ex) {
+            getLogger().severe("Could not save generated structure locations: " + ex.getMessage());
+        }
+    }
+
+    private void recordStructure(String type, String world, int x, int y, int z) {
+        generatedStructures.computeIfAbsent(type, ignored -> ConcurrentHashMap.newKeySet())
+                .add(world + "|" + x + "|" + y + "|" + z);
+    }
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!sender.isOp()) {
+            sender.sendMessage("You must be an operator to use this command.");
+            return true;
+        }
+        if (args.length != 2 || !args[0].equalsIgnoreCase("find")) {
+            sender.sendMessage("Usage: /endexpansion find <structure|all>");
+            sender.sendMessage("Structures: end-villages, ruins, void-towers, dungeons, broken-bridges, end-temples, mega-ruins");
+            return true;
+        }
+
+        String requested = args[1].toLowerCase(java.util.Locale.ROOT);
+        if (requested.equals("all")) {
+            int total = 0;
+            for (String type : generatedStructures.keySet()) {
+                Set<String> entries = generatedStructures.get(type);
+                if (entries == null || entries.isEmpty()) continue;
+                sender.sendMessage(type + " (" + entries.size() + "):");
+                for (String entry : entries) {
+                    String[] parts = entry.split("\\\\|", 4);
+                    if (parts.length == 4) sender.sendMessage("  " + parts[0] + " X:" + parts[1] + " Y:" + parts[2] + " Z:" + parts[3]);
+                }
+                total += entries.size();
+            }
+            if (total == 0) sender.sendMessage("No generated EndExpansion structures have been recorded yet.");
+            else sender.sendMessage("Total recorded structures: " + total);
+            return true;
+        }
+
+        Set<String> entries = generatedStructures.get(requested);
+        if (entries == null || entries.isEmpty()) {
+            sender.sendMessage("No recorded '" + requested + "' structures yet. Explore new End chunks first.");
+            return true;
+        }
+
+        String best = null;
+        double bestDistance = Double.MAX_VALUE;
+        Player player = sender instanceof Player p ? p : null;
+        for (String entry : entries) {
+            String[] parts = entry.split("\\|", 4);
+            if (parts.length != 4) continue;
+            if (player == null) {
+                best = entry;
+                break;
+            }
+            if (!parts[0].equals(player.getWorld().getName())) continue;
+            try {
+                double dx = Integer.parseInt(parts[1]) - player.getLocation().getX();
+                double dz = Integer.parseInt(parts[3]) - player.getLocation().getZ();
+                double distance = dx * dx + dz * dz;
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = entry;
+                }
+            } catch (NumberFormatException ignored) { }
+        }
+        if (best == null) {
+            sender.sendMessage("No '" + requested + "' structures recorded in your current world.");
+            return true;
+        }
+        String[] parts = best.split("\\|", 4);
+        sender.sendMessage("Nearest " + requested + ": " + parts[0] + " X: " + parts[1] + " Y: " + parts[2] + " Z: " + parts[3]);
+        return true;
     }
 
     private void addPopulator(World world) {
@@ -58,6 +177,7 @@ public final class EndExpansionPlugin extends JavaPlugin {
             // Rare mega-ruins are checked first, but are intentionally uncommon.
             if (enabled("mega-ruins") && random.nextDouble() < chance("mega-ruins", 0.002)) {
                 megaRuin(region, random, x, ground + 1, z);
+                plugin.recordStructure("mega-ruins", info.getName(), x, ground + 1, z);
                 return;
             }
 
@@ -72,6 +192,7 @@ public final class EndExpansionPlugin extends JavaPlugin {
                     case "broken-bridges" -> bridge(region, random, x, ground + 1, z);
                     case "end-temples" -> temple(region, random, x, ground + 1, z);
                 }
+                plugin.recordStructure(type, info.getName(), x, ground + 1, z);
                 return; // At most one structure per chunk.
             }
         }
