@@ -44,7 +44,7 @@ public final class EndExpansionPlugin extends JavaPlugin {
             if (!plugin.getConfig().getBoolean("structures.enabled", true)) return;
             int pickX = (chunkX << 4) + 8;
             int pickZ = (chunkZ << 4) + 8;
-            int ground = findGround(region, pickX, pickZ);
+            int ground = findGround(region, info, pickX, pickZ);
             if (ground < info.getMinHeight() + 5) return;
 
             String[] types = {"ruins", "void-towers", "dungeons", "broken-bridges", "end-temples"};
@@ -55,7 +55,7 @@ public final class EndExpansionPlugin extends JavaPlugin {
                 if (random.nextDouble() < chance) {
                     int x = (chunkX << 4) + 8;
                     int z = (chunkZ << 4) + 8;
-                    int y = findGround(region, x, z);
+                    int y = findGround(region, info, x, z);
                     if (y < info.getMinHeight() + 5) return;
                     switch (type) {
                         case "ruins" -> ruins(region, random, x, y + 1, z);
@@ -69,8 +69,8 @@ public final class EndExpansionPlugin extends JavaPlugin {
             }
         }
 
-        private int findGround(LimitedRegion r, int x, int z) {
-            for (int y = r.getMaxHeight() - 3; y > r.getMinHeight() + 8; y--) {
+        private int findGround(LimitedRegion r, WorldInfo info, int x, int z) {
+            for (int y = info.getMaxHeight() - 3; y > info.getMinHeight() + 8; y--) {
                 if (!r.isInRegion(x, y, z)) continue;
                 Material m = r.getType(x, y, z);
                 if (m == Material.END_STONE) return y;
@@ -79,7 +79,7 @@ public final class EndExpansionPlugin extends JavaPlugin {
         }
 
         private boolean inside(LimitedRegion r, int x, int y, int z) {
-            return r.isInRegion(x, y, z) && y > r.getMinHeight() && y < r.getMaxHeight() - 1;
+            return r.isInRegion(x, y, z);
         }
         private void put(LimitedRegion r, int x, int y, int z, Material m) {
             if (inside(r,x,y,z)) r.setType(x,y,z,m);
