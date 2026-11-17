@@ -7,8 +7,6 @@ import org.bukkit.World;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Chest;
 import org.bukkit.block.CreatureSpawner;
-import org.bukkit.block.data.BlockData;
-import org.bukkit.block.data.type.Tripwire;
 import org.bukkit.entity.EntityType;
 import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.LimitedRegion;
@@ -48,6 +46,12 @@ public final class EndExpansionPlugin extends JavaPlugin {
             if (!plugin.getConfig().getBoolean("structures.enabled", true)) return;
             int x = (chunkX << 4) + 8;
             int z = (chunkZ << 4) + 8;
+
+            // Keep generated structures off the central End island.
+            // The outer End islands begin roughly 1,000 blocks from the origin.
+            long distanceSquared = (long) x * x + (long) z * z;
+            if (distanceSquared < 1_000_000L) return;
+
             int ground = findGround(region, info, x, z);
             if (ground < info.getMinHeight() + 8) return;
 
@@ -57,10 +61,11 @@ public final class EndExpansionPlugin extends JavaPlugin {
                 return;
             }
 
-            String[] types = {"ruins", "void-towers", "dungeons", "broken-bridges", "end-temples"};
+            String[] types = {"end-villages", "ruins", "void-towers", "dungeons", "broken-bridges", "end-temples"};
             for (String type : types) {
                 if (!enabled(type) || random.nextDouble() >= chance(type, 0)) continue;
                 switch (type) {
+                    case "end-villages" -> village(region, random, x, ground + 1, z);
                     case "ruins" -> ruins(region, random, x, ground + 1, z);
                     case "void-towers" -> tower(region, random, x, ground + 1, z);
                     case "dungeons" -> dungeon(region, random, x, ground - 5, z);
@@ -110,6 +115,13 @@ public final class EndExpansionPlugin extends JavaPlugin {
                 }
             }
         }
+        private EntityType randomMob(Random rand) {
+            return switch (rand.nextInt(3)) {
+                case 0 -> EntityType.ZOMBIE;
+                case 1 -> EntityType.SKELETON;
+                default -> EntityType.SPIDER;
+            };
+        }
         private void spawner(LimitedRegion r, int x, int y, int z, EntityType type) {
             put(r, x, y, z, Material.SPAWNER);
             BlockState state = r.getBlockState(x, y, z);
@@ -147,7 +159,7 @@ public final class EndExpansionPlugin extends JavaPlugin {
                 }
             }
             for (int dx=-1; dx<=1; dx++) for (int dz=-1; dz<=1; dz++) put(r,x+dx,y+13,z+dz,Material.END_ROD);
-            spawner(r,x,y+2,z,rand.nextBoolean()?EntityType.ENDERMITE:EntityType.ENDERMAN);
+            spawner(r,x,y+2,z,randomMob(rand));
             chest(r,x,y+10,z,rand,"void-towers");
         }
         private void dungeon(LimitedRegion r, Random rand, int x, int y, int z) {
@@ -155,8 +167,8 @@ public final class EndExpansionPlugin extends JavaPlugin {
             for (int dx=-2; dx<=2; dx++) for (int dz=-2; dz<=2; dz++) {
                 if (Math.abs(dx)==2 || Math.abs(dz)==2) put(r,x+dx,y+1,z+dz,Material.PURPUR_PILLAR);
             }
-            spawner(r,x-2,y+1,z-2,EntityType.ENDERMITE);
-            if (rand.nextBoolean()) spawner(r,x+2,y+1,z+2,EntityType.ENDERMAN);
+            spawner(r,x-2,y+1,z-2,randomMob(rand));
+            if (rand.nextBoolean()) spawner(r,x+2,y+1,z+2,randomMob(rand));
             // The reward is deliberately off-centre so the room must be searched.
             chest(r,x+3,y+1,z-3,rand,"dungeons");
             put(r,x,y+1,z,Material.CRYING_OBSIDIAN);
@@ -172,7 +184,7 @@ public final class EndExpansionPlugin extends JavaPlugin {
                     put(r,x+dx,y+1,z+2,Material.PURPUR_PILLAR);
                 }
             }
-            spawner(r,x-4,y+1,z,EntityType.ENDERMITE);
+            spawner(r,x-4,y+1,z,randomMob(rand));
             chest(r,x+5,y+1,z,rand,"broken-bridges");
         }
         private void temple(LimitedRegion r, Random rand, int x, int y, int z) {
@@ -185,8 +197,64 @@ public final class EndExpansionPlugin extends JavaPlugin {
             int[] s=spots[side];
             put(r,x+s[0],y+s[1],z+s[2],Material.PURPUR_BLOCK);
             chest(r,x+s[0],y+s[1]+1,z+s[2],rand,"end-temples");
-            spawner(r,x,y+1,z,EntityType.ENDERMAN);
+            spawner(r,x,y+1,z,randomMob(rand));
         }
+        private void village(LimitedRegion r, Random rand, int x, int y, int z) {
+            // A small abandoned End settlement: three compact buildings around a plaza.
+            // It is deliberately much smaller than a vanilla village.
+            Material[] palettes = {Material.END_STONE_BRICKS, Material.PURPUR_BLOCK, Material.POLISHED_BLACKSTONE_BRICKS};
+            Material wall = palettes[rand.nextInt(palettes.length)];
+
+            // Central plaza and a broken bell marker.
+            for (int dx=-4; dx<=4; dx++) for (int dz=-4; dz<=4; dz++) {
+                put(r, x+dx, y, z+dz, (Math.abs(dx)+Math.abs(dz))%3==0
+                        ? Material.PURPUR_BLOCK : Material.END_STONE_BRICKS);
+            }
+            put(r, x, y+1, z, Material.BELL);
+            put(r, x, y+2, z, Material.PURPUR_PILLAR);
+
+            // Three small houses with door gaps and roof details.
+            house(r, x-8, y+1, z-5, wall, rand, "end-villages");
+            house(r, x+8, y+1, z-5, wall, rand, "end-villages");
+            house(r, x, y+1, z+9, wall, rand, "end-villages");
+
+            // A modest guard post makes the settlement an encounter, not a free loot stop.
+            for (int dy=0; dy<5; dy++) {
+                put(r, x-1, y+dy, z-12, Material.PURPUR_PILLAR);
+                put(r, x+1, y+dy, z-12, Material.PURPUR_PILLAR);
+            }
+            put(r, x, y+4, z-12, Material.END_ROD);
+            spawner(r, x, y+1, z-12, randomMob(rand));
+        }
+
+        private void house(LimitedRegion r, int x, int y, int z, Material wall, Random rand, String lootKind) {
+            // 5x5 house, 4 blocks tall, with a front doorway and a small hidden cache.
+            for (int dx=-2; dx<=2; dx++) for (int dz=-2; dz<=2; dz++) {
+                put(r, x+dx, y, z+dz, Material.POLISHED_BLACKSTONE_BRICKS);
+                put(r, x+dx, y+4, z+dz, Material.PURPUR_BLOCK);
+            }
+            for (int dy=1; dy<=3; dy++) {
+                for (int dx=-2; dx<=2; dx++) {
+                    put(r, x+dx, y+dy, z-2, wall);
+                    put(r, x+dx, y+dy, z+2, wall);
+                }
+                for (int dz=-1; dz<=1; dz++) {
+                    put(r, x-2, y+dy, z+dz, wall);
+                    put(r, x+2, y+dy, z+dz, wall);
+                }
+            }
+            // Doorway and windows.
+            put(r, x, y+1, z-2, Material.AIR);
+            put(r, x, y+2, z-2, Material.AIR);
+            put(r, x-2, y+2, z, Material.PURPLE_STAINED_GLASS);
+            put(r, x+2, y+2, z, Material.PURPLE_STAINED_GLASS);
+            put(r, x, y+3, z, Material.END_ROD);
+            // Each house has a chest, but its location varies.
+            int[][] caches = {{-1,1,1},{1,1,-1},{-1,1,-1},{1,1,1}};
+            int[] cache = caches[rand.nextInt(caches.length)];
+            chest(r, x+cache[0], y+cache[1], z+cache[2], rand, lootKind);
+        }
+
         private void megaRuin(LimitedRegion r, Random rand, int x, int y, int z) {
             // Rare, moderately large landmark: a courtyard with two wings, not a giant maze.
             room(r,x,y,z,8,6,8,Material.END_STONE_BRICKS,Material.POLISHED_BLACKSTONE_BRICKS,Material.PURPUR_BLOCK);
@@ -196,8 +264,8 @@ public final class EndExpansionPlugin extends JavaPlugin {
                 put(r,x+dx,y+7,z-8,Material.PURPUR_PILLAR);
                 put(r,x+dx,y+7,z+8,Material.PURPUR_PILLAR);
             }
-            spawner(r,x-5,y+1,z,EntityType.ENDERMAN);
-            spawner(r,x+5,y+1,z,EntityType.ENDERMITE);
+            spawner(r,x-5,y+1,z,randomMob(rand));
+            spawner(r,x+5,y+1,z,randomMob(rand));
             chest(r,x+7,y+1,z+7,rand,"mega-ruins");
             chest(r,x-7,y+1,z-7,rand,"mega-ruins");
         }
